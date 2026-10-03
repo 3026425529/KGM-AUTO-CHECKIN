@@ -287,6 +287,11 @@ async function waitMode() {
 
     const resultLines = results.map(r => `- 账号 ${r.index}/${number}：${r.status}`).join('\n')
     appendSummary(`### 扫码结果\n\n${resultLines}`)
+
+    const failed = results.filter(r => !r.status.includes('登录成功'))
+    if (failed.length > 0) {
+      throw new Error(`扫码登录未完成：${failed.map(r => `账号 ${r.index}/${number}（${r.status}）`).join('、')}`)
+    }
   } finally {
     close_api(api)
   }
