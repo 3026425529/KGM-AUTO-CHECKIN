@@ -1,0 +1,50 @@
+name: 验证 PAT
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检查 PAT 身份与仓库 Secrets 权限
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set +x
+
+          check_api() {
+            local label="$1"
+            local endpoint="$2"
+            local response status rc
+
+            response="$(gh api --include "$endpoint" 2>&1)"
+            rc=$?
+            status="$(printf '%s\n' "$response" | sed -nE 's#^HTTP/[0-9.]+[[:space:]]+([0-9]{3}).*#\1#p' | head -n 1)"
+
+            if [[ "$status" == "200" && "$rc" -eq 0 ]]; then
+              echo "✅ $label：HTTP 200，成功"
+              return 0
+            elif [[ "$status" == "401" ]]; then
+              echo "❌ $label：HTTP 401，PAT 无效、过期或未被 GitHub 接受"
+            elif [[ "$status" == "403" ]]; then
+              echo "❌ $label：HTTP 403，PAT 缺少所需权限或访问被策略限制"
+            elif [[ -n "$status" ]]; then
+              echo "❌ $label：HTTP $status"
+            else
+              echo "❌ $label：未能读取 HTTP 状态（gh api 退出码 $rc）"
+            fi
+            return 1
+          }
+
+          failed=0
+          check_api "PAT 身份验证（gh api user）" "user" || failed=1
+          check_api "仓库 Actions secrets public-key API" "repos/$GITHUB_REPOSITORY/actions/secrets/public-key" || failed=1
+
+          if [[ "$failed" -ne 0 ]]; then
+            exit 1
+          fi
